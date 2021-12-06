@@ -302,9 +302,195 @@ func f(int, int)
 
 Go默认采用**按值传递**参数。但是像切片`slice`、字典`map`、接口`interface`、通道`channel`这样的引用类型都是默认引用传递的。
 
+### 命名的返回值
+
+返回值分为：
+
+* 非命名返回值
+* 命名返回值
+
+```go
+func f1(i int)(int int) { // 非命名返回值
+  return i, i+2;
+}
+
+func f2(i int)(x1 x2 int) { // 命名返回值
+  x1 = i;
+  x2 = i + 2;
+  return
+}
+// 对于不需要使用的返回值可以使用空白符替代
+_, b = f1(10);
+```
+
+## 传递参数
+
+### 变长参数
+
+最后一个参数是`...type`时就可以处理一个变长的参数。
+
+```go
+func f1(a,b, arg...int) {
+  for i,x := arg {
+    // ...
+  }
+}
+```
+
+其他解决方法：
+
+* 使用结构体
+
+  ```go
+  type MyStruct struct {
+    par1 int,
+    par2 string,
+    par3 float32
+  }
+  
+  F1(MyStruct {})
+  F1(MyStruct {1, "hello", 3.14})
+  ```
+
+* 使用空接口
+
+  如果一个变长参数的类型没有被指定，则可以使用默认的空接口`interface{}`。
+
+  ```go
+  func f1(vals ...interface{}) {
+    for _ ,val := range vals {
+      switch v := value.(type) {
+        case int: // ...
+        case string: // ...
+        case float32:	// ...
+        // ...
+      }
+    }
+  }
+  ```
 
 
 
+## `defer`和追踪
+
+`defer`允许推迟到函数返回之前（或任意位置执行`return`语句之后，因为`return`语句同样可以包含一些操作，而不是单纯地返回某个值）一刻才执行某个语句或函数。
+
+**类似于Java的`finally`。**
+
+```go
+func f1() {
+  fmt.Println("T2 before")
+	defer fmt.Println("defer")
+	fmt.Println("T2 after")
+}
+// 结果：
+/**
+T2 before
+T2 after
+defer
+**/
+```
+
+当有多个defer行为被注册时，它们会以逆序执行（类似栈）。
+
+## 函数作为参数
+
+```go
+func add(a, b int) int {
+	return a + b
+}
+
+func useFunc(a, b int, f func(int, int) int) {
+	fmt.Println(f(a, b+10))
+}
+
+func T3(a, b int) {
+	useFunc(a, b, add);
+}
+```
+
+## 闭包
+
+匿名函数：`func(x, y int) int {return x+y}`
+
+```go
+fp := func(x, y int) int {
+  return x+y
+}
+fp(1, 2);
+```
+
+可以将函数作为返回值
+
+```go
+func f1(a int) (func(b int) int)
+func f1(a int) (func(b int) int) {
+  return func(b int) int {
+    a + b
+  }
+}
+```
 
 
+
+# 数组
+
+类似于python的切片
+
+数据的长度属于它的类型。如`[10]int`与`[5]int`并不是一种类型。
+
+声明格式为：
+
+```go
+var arr1 [10]int
+```
+
+Go的数组是一种**值类型**（并不是c++中的指针），所以可以通过`new()`来创建
+
+```go
+var arr2 = new [5]int
+```
+
+其中arr1的类型是`[10]int`，而arr2的类型是`*[10]int`。
+
+## 多维数组
+
+Go中的多维数组是一个矩阵（唯一例外的是切片的数组）。
+
+**将数组传递给函数**
+
+类似C++，为避免值传递的拷贝：
+
+* 传递数组的指针
+
+  ```go
+  func f1(a *[3]int) int {
+    sum := 0
+    for _,v := range a {
+      sum += v
+    }
+    return sum
+  }
+  var arr = [3]int{1,2,3}
+  var arr = [...]int{1,2,3}
+  var arr = [3]int{1:1, 2:2} // index:value
+  f1(&arr)
+  ```
+
+* 传递数组的切片
+
+## 切片
+
+切片是对数组一个连续片段的引用，所以切片是一个**引用类型**。
+
+几个属性：
+
+* `len()`：切片元素实际占用的元素长度
+* `cap()`：切片的全部长度=`len()`+剩余部分长度
+
+```go
+a[start:end] // 左闭右开的区间
+```
+
+<img src="pic/1.png" style="zoom:50%;" />
 
