@@ -617,3 +617,302 @@ t = s[2:3]
 
 GO语言中的字符串是不可变的，不能直接`str[idx]='H'`这样修改，**必须先将字符串转换成字节数组，然后再通过修改数组中的元素值来达到修改字符串的目的**，最后再将字节数组转换为字符串。
 
+# `Map`
+
+## 声明、初始化和`make`
+
+map是引用类型：
+
+```go
+var mp1 map[keyType]valueType
+var mp2 map[string]int // [keyType]与valueType之间允许空格，但是gofmt移除了空格
+```
+
+* key是任意可以用`==`或者`!=`操作符比较的类型
+
+* 可以使用下标操作来使用map
+
+* len(map)可以获得map中的pair数量
+
+  map的容量可以动态的伸缩 ，所以不存在固定长度或者最大限制。
+
+  ```go
+  mp := make(map[string]float32, 100)// 指定map的初始化容量为100
+  ```
+
+* 不要使用`new`，而是要用`make`来构造`map`
+
+  如果使用`new()`分配了一个引用对象，将会获得一个空引用的指针，相当于声明了一个为初始化的变量并且取了它的地址。
+
+## 操作
+
+* **检测key值是否存在**
+
+  ```go
+  a, b = map[key] // 如果key存在b==true，a==map[key];否则b==false，a==valueType的空值
+  ```
+
+* **删除元素**
+
+  ```go
+  delete(mp, key) // 如果key不存在，该操作不会产生错误
+  ```
+
+* **遍历**
+
+  ```go
+  for key, value := range mp1 {
+    // ...
+  }
+  // 如果只是获得key
+  for key := range mp {
+    // ...
+  }
+  ```
+
+# `struct`和`method`
+
+GO中没有类的概念。
+
+## 定义
+
+```go
+type structName struct {
+  a type1
+  b type2
+  ...
+}
+```
+
+如果字段在代码中从来都不会被用到，那么可以命名它为`_`。
+
+## 初始化
+
+`struct`的字段可以是任何类型，包括`struct`本身，也可以是函数或者接口。
+
+```go
+var t *T = new(T)
+t2 := new(T)
+```
+
+**无论是指针还是对象，都可以使用`.`来访问其字段**
+
+```go
+var t *T
+var t2 T
+t.filed1
+t2.filed2
+// 也可以显式的解引用
+(*t).filed1
+```
+
+还可以使用更简短的方式
+
+```go
+//这时混合字面量语法，底层仍调用new
+ms := &struct1{a, b, c} // 需要注意参数顺序需与结构体定义中的一致
+// 也可以不一致，但需要显式指出
+ms := &struct{B:b, C:c, A:a}
+```
+
+GO中，结构体和它所包含的数据在内存中是以连续块的形式存在的，即使结构体中嵌套有其他的结构体。如：java中一个对象和它里面包含的对象可能会在不同的内存空间。
+
+<img src="pic/5.png" style="zoom:50%;" />
+
+GO中的类型转换遵循严格的规则。当结构体定义了一个别名时，此结构体类型和它的别名都有相同的底层类型，但需要注意非法赋值或转换引起的编错误
+
+```go
+type number struct {
+  f float32
+}
+type nr number
+a := number{5.0}
+b := nr{5.0}
+var i float32 = b // 错误
+var i2 float32 = float32(b) // 错误
+var i3 number = b // 错误
+var i4 = number(b)
+```
+
+## 使用工厂模式创建实例
+
+GO中没有构造函数，但可以使用工厂模式。
+
+```go
+type File struct { // 若是File小写，那么它就是私有的，就只能使用工厂模式
+  fd int
+  name string
+}
+
+func NewFile(fd int, name string) *File {
+  if fd<0 {
+    return nil
+  }
+  return &File{id, name}
+}
+f := NewFile(fd, name) // 若是File小写，实例化File的唯一方法
+```
+
+还可以使用`Sizeof`来获取结构体类型T的一个实例所占的内存：
+
+```go
+size := unsafe.Sizeof(T{})
+```
+
+如果`make()`一个结构体变量，会引发一个编译错误，但是`new()`一个map并试图使用数据填充它，将会引发运行时错误，因为`new`将返回一个指向`nil`的指针。
+
+**使用包中的结构体**
+
+```go
+package p1
+type Struct1 struct {
+  // ...
+}
+
+package main
+func main() {
+  s1 := new(p1.Struct1)
+}
+```
+
+## 带标签的结构体
+
+结构体中除了名字和类型外，还有一个**可选的标签`Tag`**：它是一个附属于字段的字符串，可以是文档或其他的重要标记。标签的内容不可以在一般的编程中使用，只有包`reflect`能获取它。
+
+```go
+type TagType struct {
+  v1 int "An int var" // 可以作为注解似的功能
+  v2 string "An string var"
+  v3 bool "bool"
+}
+```
+
+## 匿名字段和内嵌结构体
+
+结构体可以包含一个或多个匿名（或内嵌）字段，**即使这些字段没有显式的名字，只有字段的类型是必须的，此时类型就是字段的名字。** *匿名字段本身可以是一个结构体类型*
+
+类似于OOP中的继承。GO语言中的继承是通过内嵌或组合来实现的。
+
+```go
+type inners struct {
+	in1 int
+  in2 int
+}
+
+type outers struct {
+  b int
+  c float32
+  int // 匿名字段
+  inners
+}
+
+func f1() {
+  outer := new(outers)
+  // 访问
+  outer.b = 6
+  outer.c = 3.14
+  outer.int = 12
+  outer.in1 = 24
+  outer.in2 = 48
+  // 初始化
+  outer2 := outerS{6, 3.14, 12, 24, 48}
+}
+```
+
+所以，在一个结构体中对于每一种数据类型智能有一个匿名字段。
+
+### 内嵌结构体
+
+```go
+type A struct {
+  ax, ay int
+}
+type B struct {
+  A
+  bx, by float32
+}
+func f1() {
+  b := B{A{1,2}, 1.0, 2.0}
+  // 访问
+  b.ax = 10 // 等价于b.A.ax
+  b.ay = 20
+  b.bx = 10.0
+  b.by = 20.0
+}
+```
+
+### 命名覆盖
+
+当两个字段拥有相同名字时（可能是继承而来）：
+
+* 外层名字会覆盖内层名字（但两者内存空间都保留），提供了一种重载字段或方法的方式
+* 如果相同的名字在**同一级别出现了两次**，如果这个名字已经被程序使用，将会引发一个错误（不使用不会错）。没有办法来解决这种二义性，只能由程序员自己修正。
+
+```go
+type A struct {a int}
+type B struct {a, b, int}
+type C struct {A; B}
+
+func f1() {
+  c := C{A{1}, B{2, 3}}
+	//fmt.Println(c.a) // 无法解决二义性
+	fmt.Println(c.b, c.A.a, c.B.a)
+}
+```
+
+### 结构体的方法
+
+类似于类的方法，但是是写在外面的。
+
+GO的方法是作用在接收者(`Receiver`)上的函数，接收者是某种类型的变量，所以方法是一种特殊的函数。
+
+```go
+type A struct {
+	v1 int
+  v2 int
+  v3 float32
+}
+
+func (a *A)GetSum() int {
+  return a.v1 + a.v2 + a.v3
+}
+
+func (this *A)GetProduct() int {
+  return a.v1 * a.v2 * a.v3
+}
+```
+
+接收者可以是任何类型，不仅仅是结构体类型：
+
+* 任何类型都可以有方法（内置类型也行），甚至是函数类型。
+* 接受者不能是接口类型，因为接口是一个抽象定义。
+* 接收者不能是一个指针类型，但是它可以是任何其他允许类型的指针。(即括号里面可以是一个指针)
+
+一个类型加上它的方法等价于面向对象中的类。一个区别是：在GO中，类型的代码和绑定在它上面的方法的**代码可以不放置在一起**，但是：**它们必须是同一个包的**
+
+> ​	所以解释了为什么不能定义int、float这些类型的方法。
+
+类型T（或*T）上的所有方法的集合称为它们的**方法集合**。
+
+因为方法是函数（[函数不允许重载](https://www.zhihu.com/question/40661108)），所以，不允许方法重载，即对于一个类型只能有一个给定名称的方法。但是：具有同样名字的方法可以在2个或多个不同接收者类型上存在：
+
+```go
+func (* R1) Add() {/**/}
+func (* R2) Add() {/**/}
+```
+
+别名不能有它原始类型上已经定义过的方法。
+
+一般格式是：
+
+```go
+func (rec reciever_type) methodName(param_list) (return_list) {/**method body**/}
+```
+
+如果一个reciever需要一个指针，那么GO会自动进行解引用。
+
+reciever就像OOP中的`this`或者`self`，但是GO中没有这两个关键字。
+
+#### 指针或值作为接收者
+
+基于性能的原因，recv最常见的是一个指向receiver_type的指针（没有对象的拷贝）。
