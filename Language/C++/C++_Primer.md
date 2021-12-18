@@ -3795,10 +3795,286 @@ void f1(shared_ptr<int> p) {
 ```cpp
 // 正确方法
 shared_ptr<int> p(new int(10)); // 引用计数为1
-f1(p)
+f1(p);
+// 错误方法
+int *x(new int(10));
+f1(x); // 错误：不能将int*转换为一个shared_ptr<int>
+f1(shared_ptr<int>(x)); // 合法，但是由于传入的是一个临时变量，所以在方法推出时会将x的内存释放
+int *j=x; // 未定义的：x是一个空悬指针
 ```
 
+使用一个内置指针来访问一个智能指针所负责的对象是危险的，因为无法知道对象何时会被销毁。
 
+#### `get`操作
 
+智能指针类型定义了一个名为get的函数，它**返回一个内置指针**，指向智能指针管理的对象。目的：**需要向不能使用智能指针的代码传递一个内置指针，不能delete这个使用get返回的指针。**
 
+编译器不会报错，但是**将另一个智能指针也绑定到get返回的指针上是错误的**：
+
+```cpp
+shared_ptr<int> p(new int(42)); // 此时引用计数为1
+int *q = p.get(); // 获得智能指针所管理的内置指针
+{ // 新程序块
+  // 未定义：两个独立的shared_ptr指向相同的内存
+	shared_ptr<int>(q);
+} // 程序块结束，q被销毁，它所指向的内存被释放
+int p2 = *p; // 未定义：p所指向的内存已经被释放
+```
+
+由于它们相互独立创建的，所以各自的引用计数都是1。当q所在的程序块结束时，q被销毁，这会导致q所指向的内存被释放。**从而p变成一个空悬指针，意味着当试图使用p时，将发生为定义的行为。**
+
+> get用来讲指针的访问权限传递给代码，只有在确定代码不会delete指针的情况下，才能使用get。**特别是，永远不要用get初始化另一个智能指针或者为另一个智能指针赋值。**
+
+#### 重置操作
+
+可以用reset来将一个新的指针赋与一个shared_ptr：
+
+```cpp
+p = new int(1024); // 错误：不能将一个指针赋予shared_ptr
+p.reset(new int(1024); // 正确：p指向一个新对象
+```
+
+**reset会更新引用计数，如果需要的话，会释放p所指向的对象。**reset通常和unique一起使用，来控制多个shared_ptr共享的对象。
+
+```cpp
+if(!p.unique()){
+  p.reset(new string(*p)); // p不是唯一用户，分配新的拷贝
+}
+*p += newVal; // 此时p已经是唯一的用户，可以改变对象的值
+```
+
+* 在改变底层对象之前，需要检查自己是否是当前对象仅有的永固
+* 如果不是，在改变之前要制作一份新的拷贝
+
+#### 智能指针和异常
+
+程序需要保证在一场发生后资源能被正确地释放。一个简单的确保资源被释放的方法是使用智能指针。
+
+使用智能指针，即使程序块过早结束，智能指针类也能确保在内存不再需要时将其释放：
+
+```cpp
+void f1() {
+  shared_ptr<int> sp(new int(42)); // 分配一个新对象
+  // ...
+  // 这段代码抛出一个异常，且未在f中捕获
+} // f1结束时shared_ptr自动释放内存
+```
+
+无论是**正常处理结束**还是**发生了异常**，就对象都会被销毁，那么shared_ptr就能将内存释放掉（减一引用计数）。
+
+与之相对的，当使用内置指针时内存是不会被自动释放的。且在new之后对应的delete之前发生异常，内存不会被释放。
+
+```cpp
+void f() {
+  int *ip = new int(42); // 动态分配一个新对象
+  // ...
+  // 这段代码抛出一个异常，且未在f中捕获
+  delete ip; // 由于异常的发生，代码都不会执行到这
+}
+```
+
+##### 智能指针和哑类
+
+标准库以及很多c++类都定义了析构函数，但不是所有的类都这样定义了。**特别是哪些为C和C++两种语言设计的类，通常都要求用户显示地释放所使用的任何资源。**
+
+与管理动态内存类似，**通常可以使用类似的技术来管理不具有良好的定义的析构函数的类**，所以可以给shared_ptr一个**删除器**来完成对内存的释放。
+
+```cpp
+// ClassA未定义析构函数
+void end(ClassA *p) { destory(*p); }
+void f() {
+  shared_ptr<ClassA> p(c, end);
+} // 用shared_ptr管理ClassA，在销毁时会调用end(c)来释放内存，而不是调用delete
+```
+
+#### 总结
+
+* 不使用相同的内置指针初始化（或reset）多个智能指针
+* 不delete get()返回的指针
+* 不使用get()返回的指针初始化（或reset）另一个智能指针
+* 如果使用get()返回的指针p，那么当最后一个对应的智能指针销毁后，p就无效了
+* 如果使用智能指针管理的资源不是new分配的内存（仅仅使用delete删不了的），必须传递一个删除器
+
+### `unique_ptr`
+
+一个`unique_ptr`拥有它所指向的对象。**在同一时刻只能有一个unique_ptr指向一个给定对象。**当unique_ptr被销毁时，它所指向的对象也会被销毁。
+
+unique_ptr没有make_shared函数。**定义一个unique_ptr时，需要将其绑定到一个new返回的指针之上。**初始化unique_ptr必须采用直接初始化形式：
+
+```cpp
+unique_ptr<double> p1; // 可以指向一个double的unique_ptr
+unique_ptr<int> p2(new int(10)); // p2指向一个值为10的int
+```
+
+由于一个`unique_ptr`拥有它指向的对象，所以`unique_ptr`不支持普通拷贝或赋值:
+
+```cpp
+unique_ptr<string> p1(new string("Hello World"));
+unique_ptr<string> p2(p1); // 错误：unique_ptr不支持拷贝
+unique_ptr<string> p3;
+p3 = p2; // 错误：unique_ptr不支持赋值
+```
+
+虽然不能拷贝、赋值一个unique_ptr，但可以调用release或reset将指针的所有权从一个（非const）unique_ptr转移到一个unique：
+
+```cpp
+// 将所有权从p1转移到p2
+unique_ptr<string> p2(p1.release()); // release将p1置为空，并返回一个内置指针
+unique_ptr<string> p3(new string("hello world"));
+// 将所有权从p3转移到p2
+p2.reset(p3.release()); // reset释放了p2原来指向的内存
+```
+
+reset接受一个可选的参数，**令unique_ptr重新指向给定的指针，如果unique_ptr不为空，它原来指向的对象将被释放。**
+
+release会切断unique_ptr和它原来管理的对象间的联系。（p2将原先的内存释放，并获得了p3指针的所有权）
+
+上面几个例子都是简单的将一个智能指针转移给另一个，但是，**如果不用另一个智能指针来保存release返回的指针，那么程序就需要负责资源的释放：**
+
+```cpp
+p2.release(); // 错误：p2不会释放内存，而是丢失了指针（返回了它所持有的内置指针）
+auto p = p2.release();
+delete p; // 需要手动delet
+```
+
+#### `unique_ptr`作参数和返回值
+
+“不能拷贝unique_ptr”这条规则有一个例外：可以拷贝或赋值一个将要被销毁的unique_ptr
+
+```cpp
+unique_ptr<int> clone(int p) {
+  // 正确：从int*创建一个unique_ptr<int>
+  return unique_ptr<int>(new int(p));
+}
+```
+
+对于上面的代码，编译器是知道unique_ptr将要被销毁的。编译器将执行move操作。
+
+#### `unique_ptr`的删除器
+
+16.1.6
+
+重载一个unique_ptr中的删除器会影响到unique_ptr类型以及如何构造（或reset）该类型的对象。对于unique_ptr的删除器，需要显式的将类型给出，在创建或reset一个这种unique_ptr类型的对象时，必须提供一个指定类型的可调用对象（删除器）。
+
+```cpp
+// p指向一个objT的对象，并使用一个类型为delT的对象释放内存
+unique_ptr<objT, delT> p(new objT, fcn);
+// example
+unique_ptr<ClassA, decltype(end)*> p(c, end);
+```
+
+### `weak_ptr`
+
+是一个不控制所指向对象生存期的智能指针，**它指向一个`shared_ptr`管理的对象**。将一个`weak_ptr`绑定到一个`shared_ptr`不会改变`shared_ptr`的引用计数。一旦最后一个指向对象的`shared_ptr`被销毁，对象就会被释放（类似Java弱引用？）
+
+```cpp
+auto p = make_shared<int>(10);
+weak_ptr<int> wp(p); // wp弱共享p；p的引用计数未改变
+```
+
+由于对象可能不存在，**所以不能使用weak_ptr直接访问对象，而是必须调用lock**：
+
+* 此函数检查weak_ptr所指对象是否仍存在
+* 存在：返回一个指向共享对象的`shared_ptr`，与其他`shared_ptr`一样，只要它存在，那么它所指向的底层对象也就会一直存在
+
+```cpp
+if(shared_ptr<int> np=wp.lock()) { // 如果对象存在，那么np就不会为空
+  // ...
+}
+```
+
+#### 检查指针类
+
+pass
+
+## 动态数组
+
+new和delete一次分配/释放一个对象，但某些应用需要一次为很多对象分配内存的功能。
+
+标准库中包含一个名为`allocator`的类，**允许将分配和初始化分离。**使用`allocator`通常会提供更好的性能和更灵活的内存管理能力。
+
+### `new`和数组
+
+`new`分配要求数量的对象并返回一个指向第一个对象的指针：
+
+```cpp
+int *p = new int[size];// p指向第一个int
+```
+
+size必须是整形，**但不必是常量**。
+
+通常称`new T[]`分配的内存为“动态数组”，但这种说法存在一定的误导。**当用new分配一个数组时，并未得到一个数组类型的对象，而是得到一个数组类型的指针（也就是第一个元素的地址），这只是承诺分配size*T大小的的内存空间。**
+
+因为分配的内存并不是一个数组类型，所以不能对动态内存调用begin或end，所以也不能使用range for来处理动态数组中的元素。
+
+初始化方式类似于非数组元素的方式：
+
+```cpp
+int *p1 = new int[10]; // 10个为初始化的int
+int *p2 = new int[10](); // 10个值初始化为0的int
+int *p3 = new int[3]{1,2,3}; // 列表初始化
+```
+
+* 如果初始化器数目小于元素数量，剩余元素将进行值初始化
+* 如果初始化容器数目大雨元素数目，则new表达式失败，不会分配任何内存
+
+虽然使用`()`对数组中的元素进行值初始化，但不能在括号中给出初始化器，所以不能用auto分配数组（auto需要根据值来推断类型）
+
+#### 动态分配一个空数组合法
+
+虽然不能创建一个大小为0的静态数组`int a[0]`，但是可以`new int[0]`：
+
+```cpp
+int a[0]; // 错误：不能定义长度为0的数组
+int *a = new int[0]; // 正确：但a不能解引用
+```
+
+此时，new返回一个合法的非空指针，但此指针保证与new返回的任何指针都不相同类似尾后指针（flag）。此指针不能解引用-毕竟它不指向任何元素。
+
+#### 释放动态数组
+
+```cpp
+delete [] pa; // pa必须指向一个动态分配的数组或为空
+```
+
+即使不用`[]`，编译器也不会警告。
+
+#### 智能指针与动态数组
+
+标准库提供了一个可以管理`new`分配的`unique_ptr`版本：
+
+* `unique_ptr<T[]> p`  ：p可以指向一个动态分配的数组，数组类型为T
+* `unique_ptr<T[]> p(newP)`：p指向内置指针newP所指向的动态分配的数组。**newP必须能转换为类型T\***
+
+```cpp
+unique_ptr<int[]> up(new int[10]);
+up.release(); // 自动调用delete[]销毁其指针
+// 或者这样也行？
+void destory(const int *a) {
+  delete[] a;
+}
+shared_ptr<int> p(new int[2]{1,2}, destory);
+```
+
+`<int[]>`指出up指向一个int数组而不是一个int。由于up指向一个数组，所以当up销毁它管理的指针时，会自动调用delete[]。
+
+当一个unique_ptr指向一个数组时:
+
+* 不能使用`.`或`->`运算符（flag，好像能用`p.get()`）
+* 可以使用下标运算符来访问数组中的元素
+
+`shared_ptr`不直接支持管理动态数组，如果希望使用`shared_ptr`管理一个动态数组，就**必须提供自己定义的删除器**：
+
+```cpp
+shared_ptr<int> sp(new int[10], [](int *p) {delete[] p;});
+sp.reset(); // 使用提供的lambda函数来释放数组，它使用delete[]
+```
+
+由于shared_ptr不直接支持动态数组管理，所以访问数组时需要获得智能指针所管理的内置指针：
+
+```cpp
+for(size_t i=0; i!=10; ++i) {
+  *(p.get() + i) = i; // 通过get获得内置指针
+}
+```
 
