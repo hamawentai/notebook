@@ -4078,3 +4078,113 @@ for(size_t i=0; i!=10; ++i) {
 }
 ```
 
+### `allocator`
+
+#### `new`和`delete`的局限性
+
+new和delete有一定的局限性：
+
+* new将内存分配和对象构造组合在了一起
+* delete将对象析构和内存释放组合在了一起
+
+但是分配**单个**对象时，通常希望将内存分配和对象初始化组合在一起。但是当**分配一大块内存**时，希望的是将内存分配和对象构造分离。这一位置可以分配大块内存，但只在真正需要时才真正执行对象创建操作。
+
+```cpp
+string *p = new string[2];
+for(int i=0; i<2; ++i) {
+ 	*(s+i) = "h";
+}
+```
+
+每个元素都被赋值了两次：**1. 默认初始化时 2.赋值时**，更重要的是，那些没有默认构造函数的类就不能动态分配数组了。
+
+#### `allocator`
+
+它将内存分配和对象构造分离开来。它分配的内存时原始的、未构造的，会根据给定的对象类型来确定恰当的内存大小和对齐位置：
+
+```cpp
+allocator<string> as; // 可以分配string的allocator对象
+auto const p = as.allocate(n); // 分配n个为初始化的string
+```
+
+as为n个string分配了内存。
+
+#### `allocator`分配未构造的内存
+
+allocator分配的内存是未构造的`unconstructed`，所以需要按需在此内存中构造对象。`construct`成员函数接受一个指针和零个或多个额外参数（类似emplace()），这些额外参数必须是与构造的对象的类型相匹配的合法初始化器：
+
+```cpp
+auto q=p; // q指向最后构造的元素之后(链表似的)
+as.construct(q++); // *q为空字符串
+as.construct(q++, 10, 'c'); // *q为10*'c'
+as.construct(q++, "hi"); // *q为"hi"
+```
+
+早期时：只能将一个元素拷贝到未构造空间中，而不能用元素类型的任何其他构造函数来构造一个函数。
+
+`destory()`释放内存：
+
+```cpp
+while(q != p) {
+  as.destory(--q); // 释放
+}
+```
+
+**!!! flag delete与析构函数**
+
+一旦元素被销毁后，就可以重新**使用这部分内存**来保存其他string，也可以**将其归还给系统**：
+
+```cpp
+as.deallocator(p, n);// n必须与创建时提供的大小一样
+```
+
+#### 拷贝和填充为初始化的内存
+
+`allocator`还有两个伴随算法，**可以在为初始化内存中创建对象。**
+
+* `uninitialized_copy(b, e, b2)`：从迭代器b和e指出的范围中拷贝元素到迭代器b2指定的未构造的原始内存中。b2指向内存必须足够大，能容纳输入序列中的元素拷贝。
+* `uninitialized_fill(b, n, t)`：在b和e的指定的原始内存范围中创建对象，对象值均为t的拷贝
+* `uninitialized_fill_n(b,n,t)`：从迭代器b指向的内存地址开始构建n个对象
+
+```cpp
+auto p = as.allocate(vi.size() * 2); // 分配比vi中元素所占用空间大一倍的动态内存
+// 将vi拷贝给p，且会返回一个递增后的目的位置的指针
+auto q = uninitialized_copy(vi.begin(), vi.end(), p); 
+uninitialized_fill_n(q, v.size(), 10); // 从q开始填充vi.size()个10
+```
+
+# 拷贝控制
+
+输入：
+
+```json
+{
+            "name": "pv",
+            "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                    "raw": "127.0.0.1:8080/api/v1/pv",
+                    "host": [
+                        "127",
+                        "0",
+                        "0",
+                        "1"
+                    ],
+                    "port": "8080",
+                    "path": [
+                        "api",
+                        "v1",
+                        "apply_car",
+                        "operate_test_count"
+                    ],
+                    "query": [
+                        {
+                            "key": "date_type",
+                            "value": "month"         //按天统计day       周 week    月 month
+                        }
+                    ]
+                }
+            },
+```
+
