@@ -56,9 +56,10 @@ func FunctionName (a typeA, b,c typeB) (t1 typeT1, t2, t3 typeT3) {
 
 一个函数可以由多个返回值，返回类型之间需要逗号分隔，当参数列表长度大于1时，需要使用`()`来将它们扩起来。
 
-### 别名
+### 自定义类型
 
 ```go
+// 自定义类型INT，基本类型是int
 type INT int
 var a INT = 5
 ```
@@ -76,6 +77,13 @@ type (
 ```
 
 每个值必须在经过编译后属于某一个类型（编译器必须能够推断出所有值的类型），因为Go是一种静态类型的语言。
+
+### 别名
+
+```go
+type INT=int
+var a INT = 5
+```
 
 ## `Go`程序的一般结构
 
@@ -359,7 +367,7 @@ func f1(a,b, arg...int) {
   ```go
   func f1(vals ...interface{}) {
     for _ ,val := range vals {
-      switch v := value.(type) {
+      switch v := val.(type) {
         case int: // ...
         case string: // ...
         case float32:	// ...
@@ -649,7 +657,7 @@ var mp2 map[string]int // [keyType]与valueType之间允许空格，但是gofmt�
 * **检测key值是否存在**
 
   ```go
-  a, b = map[key] // 如果key存在b==true，a==map[key];否则b==false，a==valueType的空值
+  a, b := map[key] // 如果key存在b==true，a==map[key];否则b==false，a==valueType的空值
   ```
 
 * **删除元素**

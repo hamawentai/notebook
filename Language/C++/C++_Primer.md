@@ -1,6 +1,6 @@
 # 变量和基本类型
 
-## 算数类型
+## 算数类型  
 
 <img src="pic/1.png" style="zoom:50%;" />
 
@@ -1137,7 +1137,7 @@ double k = i/j;
 
 `cast-name<type>(expression)`
 
-cast-name有`static_cast`、`dynamic_cast`、`const_cast`和`reinterpret_cast`。
+cast-name有`static_cast`、`dynamic_cast`flag、`const_cast`和`reinterpret_cast`。
 
 * **`static_cast`**：任何具有明确定义的类型转换，只要不包含底层const，都可以使用。
 
@@ -4571,3 +4571,139 @@ private:
 
 ## 交换操作
 
+`swap`并不是必要的。但是，对于分配了组员的类，定义swap是一种优化手段。
+
+如果一个类定义了自己的`swap`，那么算法将使用类的自定义版本。否则，算法将使用标准库中的版本。
+
+常规的交换操作会进行三次stringed拷贝：
+
+```cpp
+HasPtr t = v1;
+v1 = v2;
+v2 = t;
+```
+
+如果交换指针的话，v1中的string 将不会拷贝：
+
+```cpp
+string *t = v1.ps;
+v1.ps = v2.ps;
+v2.ps = t;
+```
+
+HasPtr的swap：
+
+```cpp
+class HasPtr {
+  friend void swap(HasPtr&, HasPtr&);
+};
+inline void swap(HasPtr &l, HasPtr &r) {
+  using std::swap; // using声明 flag
+  swap(l.ps, r.ps); // 交换指针
+  swap(l.i, r.i);
+}
+```
+
+## 移动语意和右值引用
+
+### 左值与右值
+
+C++中所有值必然属于左值、右值。
+
+* 左值：表达式结束后任然存在的**持久化对象**
+
+  如：int a， string b
+
+* 右值：表达式结束后**不再存在的临时对象**
+
+  如常见的字面量值：如“hello world”、123
+
+一个便捷的识别方法是：**能不能对表达式取地址，如果能就是左值，否则就是右值**
+
+而右值又分为**纯右值**和将亡值**。flag
+
+### 左值引用与右值引用
+
+引用在C++中就是给变量取别名。之前给出的都是左值引用，而右值引用就是右值的别名。
+
+C++中的右值引用：
+
+```cpp
+int &&a = 1; // 本质上就是将不具名（匿名）变量取了个别名
+int b = 1;
+int &&c = b; // 错误：不能将一个右值引用与左值绑定
+A getA() {
+  return A();
+}
+A &&a = getA(); // getA返回值是右值
+```
+
+本来getA返回的右值在表达式语句结束后，其生命就将终结（a若是一个变量，则获得的是A()的拷贝）。但是通过右值引用，该右值又将重获新生。实际上就是给那个临时变量取了个名字。只要a还活着，那么该右值临时变量将会一直存活下去。
+
+> 此处 a的类型是一个右值引用，但是a本身却是一个左值。
+
+所以：**左值只能绑定左值，右值只能绑定右值**，只有一个例外**常量左值引用既可以绑定非常量（通过一个临时变量实现）也可以绑定常量。**
+
+Example:
+
+```cpp
+class ClassA {
+public:
+  ClassA() = default;
+  ClassA(const ClassA &a) {
+    cout<<"copy"<<endl; 
+  }
+};
+ClassA retRvalue() {
+  return ClassA();
+}
+void AcceptValue(ClassA a) {}
+void AcceptRef(const ClassA &a){}
+AcceptValue(retRvalue()); // 调用两次拷贝构造
+AcceptRef(retRvalue()); // 调用一次拷贝构造
+```
+
+* AcceptValue
+  * retValue()返回一局部变量，该局部变量会进行一次拷贝，并在返回后该局部变量会被析构
+  * 由于AcceptValue接受的是一个左值，然后会将之前局部变量的拷贝，拷贝变为AcceptValue的实参
+* AcceptRef
+  * retValue()返回一局部变量，该局部变量会进行一次拷贝，并在返回后该局部变量会被析构
+  * 由于AcceptRef能接受一个右值也能接受一个左值，所以不需要再拷贝
+
+**但实际上一次拷贝都不会发生，因为大部分编译器会进行RVO（返回值优化）**。
+
+### 移动构造和移动赋值
+
+一个类如果没有移动构造和移动赋值函数，那么在发生拷贝时只会调用拷贝构造函数，并在拷贝完成后销毁右边的临时变量。
+
+所以若想能够直接使用临时对象已经申请的资源，那么紧呢杲节省资源，又能节省资源申请和释放的时间，那么就需要使用**移动语意**。
+
+若想实现移动语意，就必须实现：移动构造和复制构造函数。[参考链接](https://www.jianshu.com/p/d19fc8447eaa)
+
+```cpp
+// data是ClassA的一个指针成员变量
+// 移动构造函数
+ClassA(ClassA&& a):data(a.data) noexcept {
+  a.data = nullptr; // 不再指向之前的资源
+}
+// 移动赋值函数
+ClassA& operator=(ClassA && a) noexcept {
+  if(this == &a) return *this; // 避免自赋值
+  delete data;
+  data = a.data;
+  a.data = nullptr; // 不再指向之前的资源
+  return *this;
+}
+```
+
+移动构造和移动赋值与之前构造、赋值函数的区别在于其形参是**右值引用**，所以当使用一个右值进行拷贝时时**优先进入移动构造和移动赋值函数**。
+
+移动构造和移动赋值**并不是重新分配一块内存，再将拷贝对象复制过来，而是使用的“窃取”**。
+
+这个“窃取”是指：**将自己的指针指向别人的资源，然后将别人的指针修改为nullptr**。如果不将别人的指针修改为空，那么临时对象析构时就会释放掉这个资源。
+
+copy和move的区别：
+
+<img src="pic/14.png" style="zoom:50%;" />
+
+(或者说move并没有在语言层面是实现“窃取”而是通过定义的移动构造和移动赋值函数实现，右值引用的作用在于表明一个对象时右值对象而优先进入move语意，从而达到节省资源的作用？)
