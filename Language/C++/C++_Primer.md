@@ -4706,4 +4706,154 @@ copy和move的区别：
 
 <img src="pic/14.png" style="zoom:50%;" />
 
-(或者说move并没有在语言层面是实现“窃取”而是通过定义的移动构造和移动赋值函数实现，右值引用的作用在于表明一个对象时右值对象而优先进入move语意，从而达到节省资源的作用？)
+(或者说move并没有在语言层面是实现“窃取”而是通过定义的移动构造和移动赋值函数实现，右值引用的作用在于表明一个对象是右值对象而优先进入move语义（不使用拷贝构造/赋值函数而使移动构造/赋值函数）而具体的操作是在move语义中在用户层面实现的“窃取”（将右值赋值给该对象A，并将右值置空（保证在右值离开作用域发生析构时不会影响对象A）），从而达到节省资源的目的？[bingo](https://www.zhihu.com/question/277908001))
+
+### 左值使用移动语意
+
+对于一个左值，需要拷贝时必然使用的是拷贝构造/赋值函数，但是有些左值是局部变量，生命周期很短，那么就可以对该左值也使用移动语意。为了实现这个目的可以使用C++11的`std::move()`。
+
+`std::move()`将左值转换为右值。实际上是显式告诉编译器，虽然是一个左值但是不需要使用拷贝构造函数，而是使用移动构造函数。
+
+```cpp
+MyStr str("hello"); // 调用构造函数
+MyStr str2("world"); // 调用构造函数
+MyStr str3(str1); // 调用拷贝构造函数
+MyStr str4(std::move(str1)); // 调用移动构造函数
+
+MyStr str5;
+str5 = str2; // 调用拷贝赋值函数
+MyStr str6;
+str6 = std::move(str2); // str2中的内容即将消失，不要再去使用
+```
+
+* Line9，虽然将str2的资源给了str6，但是str2并没有马上析构，只有在str2离开自己作用域时才会析构。
+
+  所以说对一个不要再去取一个右值的值，只不过是一个没有约束力的规则罢了。
+
+* 如果没有提供移动构造函数，`std::move()`会失效但是不会报错。
+
+* C++所有容器都实现了`move`语义
+
+move只不过是在底层将一个引用进行了强制转换：
+
+```cpp
+template<typename _Tp>
+constexpr typename std::remove_reference<_Tp>::type &&
+move(_Tp &&__t) noexcept { 
+  return static_cast<typename std::remove_reference<_Tp>::type &&>(__t); 
+}
+
+// 简化版
+template<typename T>
+T&& move(T& v) { 
+ return static_cast<T&&>(v); 
+}
+```
+
+### 通用引用`universal references`
+
+当右值引用与模板结合时，引用会变得更加复杂。
+
+```cpp
+template<typename T> void f(T&& param) {}
+f(10); // 10是右值
+int x = 10;
+f(x); // x是左值
+```
+
+如果是普通函数的话，给f传递一个左值肯定是不行的。但此处是一个函数模板，这里`T&&`是一个**未定义的引用**，也叫做**通用引用**，它必须被初始化（flag），而它是左值引用或右值引用却却取决于它的初始化，**如果它被一个左值初始化，就是一个左值引用；被一个右值初始化，就是一个右值引用。**
+
+**Note：只有当发生自动类型推导时（如模板参数或auto关键字），`&&`才是一个通用引用。**
+
+```cpp
+template<typename T> voidf(T&& param); // 此处T的类型需要类型推导，所以&&是一个通用引用
+template<typename T> class Test {
+  Test(Test&& rhs); // Test是一个特定的类型，不需要类型推导，所以&&表示右值引用
+};
+void f(Test&& param); // 右值引用
+
+// 在调用这个函数之前vector<T>中T的类型推导已经完成，已经确定是一个vector<T>类型，所以是右值引用
+template<typename T> void f(vector<T>&& param);
+// 通用引用仅仅发生在T&&下，任何一点附加条件都会使之失效
+template<typename T> void f(const T&& param); // 加了const，有了附加条件，所以是右值引用
+```
+
+所以还是取决于T最终被推导的类型：
+
+* T被推导出string，那么T&&就是string&& -- 右值引用
+* T被推导成string&，那么T&&就是 string& &&，就会发生引用折叠
+
+引用折叠：
+
+* 所有右值引用叠加到右值引用上仍然是右值引用
+* 所有其他类型之间的叠加都将变成左值引用
+
+```cpp
+template<typename T> void f(T&& param) {}
+
+int x=1;
+f(1); // 参数是右值，所以是int&& &&，右值引用
+f(x); // 参数是左值，所以int& &&，折叠成左值引用
+int&& a=2;
+f(a); // a的类型是右值引用类型，但是a是一个左值，所以T被推导出int &，左值引用
+```
+
+所以正如其名：**传递左值进去，就是左值引用，传递右值进去，就是右值引用**
+
+### 完美转发
+
+转发就是：**通过一个函数将参数继续转交给另一个函数处理**，原参数可能是右值，也可能是左值，如果还能继续保持参数原有的特征，那么它就是完美的。
+
+```cpp
+void process(int& i); // 0
+void process(int&& i); // 1
+void forward(int&& i) {
+  process(i);
+}
+
+int a=0;
+process(a); // a被视为左值 0
+process(1); // 1被视为右值 1
+process(std::move(a)); // 强制将a由左值改为右值 0
+forward(2); // 2到了forward的i，i变为了左值，会调用 0
+forward(a) // 错误：右值引用不接受左值
+```
+
+上述例子就是不完美转发，C++提供`std::forward()`解决这个问题：
+
+```cpp
+void forward(int&& i) {
+  process(std::forward<int>(i));
+}
+forward(2); // 1
+```
+
+此时forward（自定义的）能将右值转发过去，但不能够转发左值，**这个可以使用通用引用解决**。
+
+```cpp
+void run(int&& i); // 0
+void run(int& i); // 1
+void run(const int &&i); // 2
+void run(const int& i); // 3
+template<typename T> void prefect_forward(T&& t) {
+  run(std::forward<T>(t));
+}
+template<typename T> void unprefect_forward(T&& t) {
+  run(t);
+}
+
+int a = 0, b = 0;
+const int c = 0;
+const int d = 0;
+unprefect_forward(a); // 1
+unprefect_forward(std::move(a)); // 1 此时该右值变为了形参是一个右值
+unprefect_forward(c); // 3
+unprefect_forward(std::move(d)); // 3 理由同上
+
+prefect_forward(a); // 1
+prefect_forward(std::move(a)); // 0 std::forward造就了完美转发
+prefect_forward(c); // 3
+prefect_forward(std::move(d)); // 2 理由同上
+```
+
+在`universal references`和`std::forward`的合作下，能够完美的转发这4种类型。
