@@ -3246,6 +3246,7 @@ Func f = [](int i, int j, int k, int l) -> int {
   return i + j + k + l;
 };
 auto f2 = bind(f, _2, _1, 3, 4);
+// 2 1 3 4
 cout << f2(1, 2) << endl;
 ```
 
