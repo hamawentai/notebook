@@ -84,7 +84,7 @@ SO：
 ```cc
 const A operator*(const A&l, const A &r);
 // 返回值无const
-(a * b) = c; // 在a、b的结果上调用operator=
+(a * b) = c; // 在a、b的结果(右值)上调用operator=
 ```
 
 必须避免无端地与内置类型不兼容。
