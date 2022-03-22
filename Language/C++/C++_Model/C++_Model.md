@@ -1130,4 +1130,228 @@ ptr->f();
 
 ### 多继承下的虚函数
 
+虚继承下的单一继承与普通的单继承还是不同的。
 
+<img src="pic/32.png" style="zoom:15%;" />
+
+复杂，**不要再虚基类中声明非静态的数据成员**。
+
+## 指向成员函数的指针
+
+非静态成员函数都绑定于某个类对象的地址上，都需要对象的地址才能够调用该函数。
+
+```cc
+// 成员函数指针的声明
+double (Point::*pmf) ();
+// 定义
+double (Point::*coord)() = &Point::x;
+// 赋值
+pmf = &Point::x;
+// 调用需要对象的参与
+(obj.*pmf)();
+(ptr->*pmf)();
+// 伪码
+(pmf)(&obj);
+(pmf)(ptr);
+```
+使用一个成员函数，如果不是虚函数、多继承、虚基类的话，其效率与普通方法调用一样。
+
+### 指向虚成员函数的指针
+
+```cc
+float (Point::*pmf)() = &Point::z;
+Point *ptr = new Point3d();
+ptr->z(); // 虚函数，调用的是Point3d的z()
+(ptr->*pmf)(); // 依然调用的是Point3d的z()
+```
+也就是说，虚拟机制仍然能够在指向成员函数的指针下运行。
+实现：对一个非静态虚成员函数取地址，得到的是其在内存中的地址，**然而一个虚函数，其地址在编译器是未知的，所以能够知道仅仅是虚函数在其虚表中的索引值**，所以对一个虚成员函数取地址，得到的只是一个索引值。
+example:
+```cc
+class Point {
+  public:
+    virtual ~Point();
+    float x();
+    float y();
+    virtaul float z();
+};
+&Point::~Point; // 得到的是索引值如：1
+&Point::x(); // 得到的是内存地址
+&Point::z(); // 得到的是索引值如：2
+// 当前指针的一个相对偏移位置
+(*ptr->ptr[(int)pmt])(ptr);
+```
+
+### 多继承下指向成员函数的指针
+
+使用正负值来确定使用的是索引还是地址：
+```cc
+(ptr->*pmf)();
+// 伪码
+(pmf<0) ? 
+(*pmf.addr)(ptr) : // 地址
+(*ptr->vptr[pmf.index])(ptr); // 索引
+```
+
+## 内联函数
+
+每个表达式种类都有一个权值，内联函数的复杂度取决于其权值之和。
+1.  分析函数是否能内联
+  如果不可内联就会变为一个static函数
+2.  真正的内联操作会在调用的那一点展开
+  同时在调用点处判断该函数是否可内联
+
+### 形式参数
+
+* 在内联发生的时候，每一个形式参数都会被对应的实际参数取代。
+* 而那些会在函数中修改的参数，则会有一个临时变量代替。
+* 实际参数是一个常量表达式的话，会在替换之前先求值
+* 如果不是一个常量表达式的话，也不是带副作用的话，就直接替换之
+
+```cc
+inline int min(int i, int j) {return i<j  i : j;}
+int minval;
+int val1=1024, val2=2048;
+// 替换
+// minval = val1 < val2 ? val1 : val2; 
+minval = min(val1, val2);
+// 求值
+// 直接将表达式的值求出来 minval = 1024
+minval = min(1024, 2048);
+// 替换
+// 为了避免重复求值，引入临时变量
+// int t1=foo(), t2=bar()+1;
+// minval = t1 < t2 ? t1 : t2;
+minval = min(foo(), bar()+1);
+
+### 局部参数
+
+在内联函数中定义局部变量:
+```cc
+inline int min(int i, int j) {
+  int minval = i<j ? i : j;
+  return minval;
+}
+{
+  int local_var;
+  int minval;
+  minval = min(val1, val2);
+  // 扩展
+  // 将内联函数的局部变量做mangling处理
+  int _min_minval; // min中的minval变为了_min_minval
+  minval = (_min_minval = val1<val2 ? val1 : val2, _min_minval);
+}
+```
+内联函数中每一个局部变量都必须放在函数调用的一个封闭段中，且拥有一个独一无二的名称。
+内联函数中加上局部变量，再加上有副作用的参数，就可能产生大量临时性的对象。
+```cc
+minval = min(val1, val2) + min(foo(), foo()+1);
+// 扩展
+int _min_minval_001;
+int _min_minval_002;
+```
+<img src="pic/33.png" style="zoom:15%;" />
+
+# 构造、解构、拷贝
+
+```cc
+class Abstract_base {
+  public:
+    virtual ~Abstract_base();
+    virtual void interface() const = 0;
+    virtual const char* mumble() const {return _mumble;}
+  protect:
+    char *mumble;
+};
+```
+Abstract_base有一个纯虚函数，所以它不能拥有实体，但是它仍需要一个明确的构造函数用来初始化他的成员变量。如果没有这个构造函数，那么其派生类将无法初始化_mumble。
+
+## 纯虚函数
+
+可以定义并调用一个纯虚函数，不过**只能被静态地调用好，不能经过虚拟机制调用。**
+```cc
+// 在Abstract_base外定义纯虚函数
+void Abstract_base::interface() const {// do something}
+void Derived::interface() cosnt {
+  // 静态调用
+  Abstract_base::interface();
+}
+```
+析构函数不能是纯虚函数：
+C++保证一个继承体系中的每一个类对象的析构函数都会被调用，所以编译器不能抑制这个调用操作。
+
+## 虚拟的规范
+
+把所有的成员函数都声明为虚函数，然后再依靠编译器去优化把非必要的虚函数去除这不是一个好的设计。
+虚函数将函数声明为const，但是它并不能知道其派生类中是否需要改变成员对象，所以简单点就是：不在虚函数上使用const。
+修正Abstract_base：
+```cc
+class Abstract_base {
+  public:
+    virtual ~Abstract_base();
+    virtual void interface() = 0;
+    // 它只需要返回一个成员变量，其派生类大概率不会重写
+    const char* mumble() const {return _mumble;}
+  protect:
+    char *mumble;
+    Abstract_base(char *ch=0);
+};
+```
+
+## 无继承下的对象构造
+
+```cc
+// 其初始化操作延迟到程序激活（startup）时才开始
+Point global; // 全局对象，与main同生命周期
+Point foobar() {
+  Point local; // 局部变量，出了作用域就没了，分配在栈上
+  // 没有写()，所以并没有调用默认构造函数，也就是没被初始化只是分配了内存而已
+  // Point *head = _new(sizeof(Point));
+  Point *head = new Point; // 分配在自由存储区上，生命直到delete摧毁
+  *head = local;
+  // do ...
+  delete head;
+  return lcoal;
+}
+```
+global中那些trivial构造函数，要不是没定义，要么就是没调用。在C中，global被视为一个临时性的定义（因为未被初始化），它可以在程序中发生多次，**那些实例会被链接器折叠起来，只留下一个单独的实体**，存于data segment的BSS（Block Started by Symbol）中。
+C++中不支持“临时性定义”，它把所有的全局对象当作初始化过的数据来处理（因为构造函数会隐式的发生）。
+
+### 抽象数据类型
+
+有public、protected、privete访问域，但是没有虚函数。
+不论private、public、protected或者是成员函数的声明，都不会占用额外的对象空间。
+初始化列表比逐一的赋值效率高，因为当函数放进程序堆栈中时，初始化列表中的常量就已经被放进内存中了。
+初始化列表的缺点：
+* 只有类成员都是public时才生效
+*  只能指定常量
+* 有些编译器可能会失败
+
+### 加上继承
+
+<img src="pic/34.png" style="zoom:15%;" />
+
+虚函数引入将膨胀代码：
+* 构造函数将被扩展以便将vptr初始化
+  位于调用基类构造函数之后，自定义代码之前
+* 为了使vptr正确被构造、拷贝，将会引入合成的拷贝构造与合成的赋值运算符
+  在有NRV的情况下，将不需要拷贝构造，因为不会有中间变量的产生，而是直接将结果放入了入参中（_result）。
+
+## 继承下的对象构造
+
+定义了一个对象后会调用它的构造函数，而其构造函数会有一些扩张操作：
+```cc
+T obj;
+```
+1. 虚基类的构造函数将被调用
+  从左到右，从深到浅
+
+  <img src="pic/35.png" style="zoom:15%;" />
+
+2.  所有上一层的基类构造函数必须会被调用，与其声明顺序为顺序
+
+  <img src="pic/36.png" style="zoom:15%;" />
+
+3.  如果类对象存在vptr，就需要赋予正确的值（指向对应的虚函数表）
+4.  如果一个类成员数据未出现在初始化列表，就需要调用其默认构造函数
+5.  将成员初始化列表放入构造函数之中，并以**成员的声明顺序声明**。
