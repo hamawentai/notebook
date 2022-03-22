@@ -357,3 +357,129 @@ Lock l2(l1);
 
 * 复制底层资源
 
+* 转移底部资源的拥有权
+
+# 在资源管理类中提供对资源的访问
+
+```cc
+void func(A*ptr);
+ptr = make_shared<A>();
+// 在之前，func接收一个A*的参数，但此时传入的却是一个对象，就不能调用
+int days = func(ptr);
+```
+
+RAII对象需要能够显式转换和隐式转换为其代表的原始资源。
+
+* 显式：get()能获得原始资源的指针
+
+* 隐式：如智能指针重载了指针取值操作符（`->`与`.`）
+
+  ``` cc
+  class A {
+    public:
+    	void f();
+  };
+  auto ptr = make_shared<A>();
+  ptr->f();
+  // 等价于
+  ptr.get()->f();
+  ```
+
+  实现：
+
+  ```cc
+  // 使用Font来管理FontHandle
+  class Font {
+    public:
+    	// 显式
+    	FontHandle get() const {return f;}
+    	// 隐式
+    	operator FontHandle() const {return f;}
+  };
+  // 隐式会带来错误
+  Font f1(getFont()); // 一个FontHandle被f1管理
+  FontHandle f2 = f1; // 本来是要拷贝一个f1对象，但是此时，将f1的底层FontHanle给了f2
+  // 当f1释放后f2将会空悬
+  ```
+
+  
+
+一般显式转换比较安全，隐式转换比较方便。但是RAII并不是为了封装资源，而是为了管理资源（获取资源、释放资源）。
+
+#  成对的使用new和delete
+
+pass
+
+# 以独立语句将new对象置入智能指针
+
+```cc
+int f1();
+void f2(shared_ptr<A> ptr, int p);
+// 智能指针不接受隐式的构造（shared_ptr是一个explict的构造函数）
+f2(new A(), f1());
+// 需要自己将指针转换之
+f2(make_shared<A>(new A()), f1()); // <1>
+```
+
+<1>可能会产生内存泄露。
+
+shared_ptr指向步骤：
+
+* new A()
+* 调用shared_ptr的构造函数
+
+所以调用f2之前需要：
+
+* 调用f1
+* new A()
+* 调用shared_ptr的构造函数
+
+但是这三者的顺序确实不一定的，若是213，且1发生了异常，将导致f2的调用会失败，然后导致2发生内存泄露。
+
+解决办法是将智能指针的构建与参数的传入分离：
+
+```cc
+auto ptr = make_shared<A>(new A());
+f2(ptr, f1());
+```
+
+# 让接口正确使用，不被误用
+
+<img src="pic/1.png" style="zoom:50%;" />
+
+# 以传const引用替换值传递
+
+* 避免多余的拷贝与构造操作
+* 避免对象切割的问题
+
+引用往往以指针（type * const ref）来实现。
+
+<img src="pic/2.png" style="zoom:50%;" />
+
+某些编译器对待内置类型与用户自定义类型的态度是不一样的，即使二者在底层表示是一样的。
+
+```cc	
+struct MyDouble {
+  double l;
+} x;
+double l;
+// 编译会将l放入缓存，但不一定会将x放入缓存（除非是指针类型）
+```
+
+# 不能返回局部对象的指针/引用
+
+函数创建新对象的方法：
+
+* local变量在栈上
+* 指针（new出来的）在堆上
+
+将local变量返回时，其实返回的是该对象的拷贝（在NRV的情况下甚至没有拷贝），拷贝给了函数外的_result，而local变量在函数结束后就被销毁，若是返回其指针/引用自然是不安全的。
+
+将一个堆上的对象的引用返回，语义上是正确的，但是不应该这么做：
+
+<img src="pic/3.png" style="zoom:50%;" />
+
+# 将成员变量声明为private
+
+<img src="pic/4.png" style="zoom:50%;" />
+
