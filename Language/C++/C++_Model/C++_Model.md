@@ -1244,6 +1244,7 @@ minval = min(1024, 2048);
 // int t1=foo(), t2=bar()+1;
 // minval = t1 < t2 ? t1 : t2;
 minval = min(foo(), bar()+1);
+```
 
 ### 局部参数
 
