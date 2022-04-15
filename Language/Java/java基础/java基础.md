@@ -676,7 +676,7 @@ final V putVal(int hash, K key, V value, boolean onlyIfAbsent,
 
         /**
         	插入时，需判断是否存在Hash冲突：
-        	若不存在（即当前table[i] == null），则直接在该数组位置新建节点，插入完毕
+        	若不存在（即当前t·able[i] == null），则直接在该数组位置新建节点，插入完毕
         	否则，代表存在Hash冲突，即当前存储位置已存在节点，
         	则依次往下判断：
         		a. 当前位置的key是否与需插入的key相同;
@@ -1532,7 +1532,7 @@ public class FailFastTest {
 }
 ```
 
-这里异常的抛出条件是检测到 `modCount！=expectedmodCount` 这个条件。如果集合发生变化时修改`modCount`值刚好又设置为了`expectedmodCount`值，则异常不会抛出。
+这里异常的抛出条件是检测到 `modCount != expectedmodCount` 这个条件。如果集合发生变化时修改`modCount`值刚好又设置为了`expectedmodCount`值，则异常不会抛出。
 
 ### 原理
 

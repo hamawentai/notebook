@@ -39,7 +39,7 @@ public interface InputStreamSource {
 
 **时序图：**
 
-![img](file:///Users/weix/Documents/notebook/Spring源码解析/pic/1.png?lastModify=1617004652)**`XmlBeanFactory`构造函数：**
+<img src="pic/1.png" alt="img" style="zoom:50%;" />**`XmlBeanFactory`构造函数：**
 
 ```java
 public XmlBeanFactory(Resource resource) throws BeansException {
