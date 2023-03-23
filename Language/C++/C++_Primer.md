@@ -179,7 +179,7 @@ int *p3 = NULL; // 等价于int *p3 = 0;
 指针和引用都能提供对其对象的简介访问，然而在具体实现细节上二者有很大不同，**最重要的一点是引用本身并非一个对象。一旦定义了引用，就无法令其再绑定到另一个对象，之后每次使用这个引用都是访问最初绑定的那个对象。**
 
 * 指针是一个对象，可在生命周期内赋不同的值。
-* 无需在定义是赋值。
+* 无需在定义时赋值。
 
 #### `void *`指针
 
@@ -406,7 +406,7 @@ constexpr int size();
 
 尽管指针、引用都能定义成constexpr，但它们的初始值却受到严格限制。一个constexpr指针的初始值必须是nullptr或者0。
 
-相反，定义于函数体之外的对象其地址固定不变，能用来初始化constexpr指针。？
+相反，定义于函数体之外的对象其地址固定不变，能用来初始化constexpr指针。（全局的原因？）
 
 #### 指针和`constexpr`
 
@@ -519,7 +519,7 @@ decltype处理const的方式异于auto，它是会保存该变量的类型的（
 ```cpp
 // decltype的结果可以是引用类型
 int i=42, *p=&i, &r=i;
-decltype(r+0) b; // 正确：r+0的结果是int，所以b是一个（为初始化的）int
+decltype(r+0) b; // 正确：r+0的结果是int，所以b是一个（未初始化的）int
 decltype(*p) c; // 错误：c是int&，必须初始化？
 ```
 
@@ -889,7 +889,7 @@ if (s1 < s2) // 结果是false，即s2<s1，默认逐个比较字符的字典序
 ```cpp
 char a[] = "hello";
 char b[] = "helloo";
-if(a < b) // 错误：视图比较两个无关的地址
+if(a < b) // 错误：试图比较两个无关的地址
 ```
 
 ### 混用string对象和C风格字符串
@@ -1196,6 +1196,8 @@ cast-name有`static_cast`、`dynamic_cast`flag、`const_cast`和`reinterpret_cas
   double *k = static_cast<double*>(p);
   ```
 
+  一句话总结：**static_cast在编译时会进行类型检查，而强制转换不会，static_cast无法进行无关类型指针间的转换。**
+
 * **`const_cast`**：只能改变**运算对象**的底层const。
 
   ```cpp
@@ -1279,7 +1281,7 @@ int *p;
 char *pc = (char *)p;
 ```
 
-如果替换后不合法，则旧式强制类型转换执行与`reinterpret_cast`类似的功能。
+如果替换后不合法，**则旧式强制类型转换执行与`reinterpret_cast`类似的功能**。
 
 # 语句
 
@@ -2120,7 +2122,7 @@ ClassA &func2() {
 
 ### 某些类不能依赖于默认构造函数
 
-一旦定义了一些其他的构造函数，那么除非自定义一个默认构造函数（无任何实参），否则类讲没有默认构造函数。*依据：如果一个类在某种情况下需要控制对象的初始化，那么该类很可能在所有情况下都需要控制。如：某一个类不希望它的成员被默认初始化，必须赋值，那么它是不需要默认构造函数的，此时就不能合成默认构造函数。*
+一旦定义了一些其他的构造函数，那么除非自定义一个默认构造函数（无任何实参），否则类将没有默认构造函数。*依据：如果一个类在某种情况下需要控制对象的初始化，那么该类很可能在所有情况下都需要控制。如：某一个类不希望它的成员被默认初始化，必须赋值，那么它是不需要默认构造函数的，此时就不能合成默认构造函数。*
 
 **只有当类没有声明任何构造函数时，编译器才会自动生成默认构造函数。**
 
@@ -3182,8 +3184,8 @@ bool func(const string &s1, const string &s2) {
 * 重载了函数调用的类
 * `lambda`表达式
 
-```python
-[capture list] (parameter list) -> return type { function body }
+```py
+[capture list] (parameter list) -> return type { function body };
 ```
 
 * `capture list`：捕获列表
@@ -3191,7 +3193,7 @@ bool func(const string &s1, const string &s2) {
 
 可以忽略参数列表和返回类型，**但是必须包含捕获列表和函数体**
 
-```cpp
+```cc
 auto f = [] {return 10;};
 ```
 
@@ -3535,7 +3537,7 @@ m是容器的value_type，在遍历时可以改变pair的值，但不能改变�
 
 ```cpp
 string str = "Hello";
-mp.insert({str}, 1);
+mp.insert({str, 1});
 mp.insert(make_pair(str, 1));
 mp.insert(pair<string, int>(str, 1));
 mp.insert(map<string, int>::value_type(str, 1));
@@ -3968,9 +3970,9 @@ void f1() {
 } // f1结束时shared_ptr自动释放内存
 ```
 
-无论是**正常处理结束**还是**发生了异常**，就对象都会被销毁，那么shared_ptr就能将内存释放掉（减一引用计数）。
+无论是**正常处理结束**还是**发生了异常**，旧对象都会被销毁，那么shared_ptr就能将内存释放掉（减一引用计数）。
 
-与之相对的，当使用内置指针时内存是不会被自动释放的。且在new之后对应的delete之前发生异常，内存不会被释放。（关键是智能指针事RAII的）
+与之相对的，当使用内置指针时内存是不会被自动释放的。且在new之后对应的delete之前发生异常，内存不会被释放。（关键是智能指针是RAII的）
 
 ```cpp
 void f() {
@@ -4321,7 +4323,7 @@ class ClassA {
 };
 ```
 
-拷贝构造函数的第一个参数必须是一个引用类型（flag），**虽然可以定义一个可以接受非const引用的拷贝构造函数，但此参数几乎总是一个const引用。**拷贝构造函数在几种情况下都会被隐式使用，所以**拷贝构造函数通常不应该是`explicit`的**。
+拷贝构造函数的第一个参数必须是一个引用类型（~~flag~~），**虽然可以定义一个可以接受非const引用的拷贝构造函数，但此参数几乎总是一个const引用。**拷贝构造函数在几种情况下都会被隐式使用，所以**拷贝构造函数通常不应该是`explicit`的**。
 
 ### 合成拷贝构造函数
 
@@ -4348,6 +4350,27 @@ string s(dots); // 直接初始化 使用的也是函数：即拷贝构造函数
 string s2 = dots; // 拷贝初始化 相当于 s2(dots)
 string s3 = "hello"; // 拷贝初始化  相当于 s3("hello")
 string s4 = string("hello world"); // 拷贝初始化 相当于 s4("hello world")
+// .......
+struct A {
+    int a;
+    A() {
+        a = 10;
+        cout << "A()" << endl;
+    }
+    A(int a) : a(a) { cout << "A(int)" << endl; }
+    A(const A& a) : a(a.a) { cout << "A copy" << endl; }
+    A& operator=(const A& a) {
+        this->a = a.a;
+        cout << "A assign copy" << endl;
+        return *this;
+    }
+};
+
+A a = 10; // A(int)
+A b(20); // A(int)
+A c = a; // A copy
+A d(a); // A copy
+d = b; // A assign copy
 ```
 
 拷贝初始化除了在`=`时发生还会在：
@@ -4501,7 +4524,7 @@ f(aa); // 此时aa被拷贝给f的形参a和局部变量ret，它们三有相同
 
 #### 需要拷贝/赋值的也需要赋值/拷贝
 
-pass
+[参考链接](https://www.cnblogs.com/Joezzz/p/9683787.html)
 
 ## 阻止拷贝
 
@@ -4808,26 +4831,26 @@ A &&a = getA(); // getA返回值是右值
 Example:
 
 ```cpp
-class ClassA {
-public:
-  ClassA() = default;
-  ClassA(const ClassA &a) {
-    cout<<"copy"<<endl; 
+  class ClassA {
+  public:
+    ClassA() = default;
+    ClassA(const ClassA &a) {
+      cout<<"copy"<<endl; 
+    }
+  };
+  ClassA retRvalue() {
+    return ClassA();
   }
-};
-ClassA retRvalue() {
-  return ClassA();
-}
-// 等同于
-ClassA temp;
-void retRvalue(ClassA temp) {
-  temp = ClassA(); // 这次拷贝是不会减少的
-  return;
-}
-void AcceptValue(ClassA a) {}
-void AcceptRef(const ClassA &a){}
-AcceptValue(retRvalue()); // 调用两次拷贝构造
-AcceptRef(retRvalue()); // 调用一次拷贝构造
+  // 等同于
+  ClassA temp;
+  void retRvalue(ClassA temp) {
+    temp = ClassA(); // 这次拷贝是不会减少的
+    return;
+  }
+  void AcceptValue(ClassA a) {}
+  void AcceptRef(const ClassA &a){}
+  AcceptValue(retRvalue()); // 调用两次拷贝构造
+  AcceptRef(retRvalue()); // 调用一次拷贝构造
 ```
 
 * AcceptValue
@@ -4839,7 +4862,11 @@ AcceptRef(retRvalue()); // 调用一次拷贝构造
 
 **但实际上一次拷贝都不会发生，因为大部分编译器会进行RVO（返回值优化）**。
 
+fno-elide-constructors关闭RVO。
+
 RVO仅仅针对返回值（输出），不包括函数参数（输入）。有许多地方你会将可移动的对象作为输入参数传入函数。
+
+[参考链接](https://blog.csdn.net/u012944685/article/details/123639956)
 
 ### 移动构造和移动赋值
 
@@ -4847,7 +4874,7 @@ RVO仅仅针对返回值（输出），不包括函数参数（输入）。有�
 
 所以若想能够直接使用临时对象已经申请的资源，那么既能节省资源，又能节省资源申请和释放的时间，那么就需要使用**移动语意**。（主要是减少无意义的拷贝）
 
-允许你显示的将浅拷贝与深拷贝分开。
+**允许你显式的将浅拷贝与深拷贝分开。**
 
 若想实现移动语意，就必须实现：移动构造和复制构造函数。[参考链接](https://www.jianshu.com/p/d19fc8447eaa)
 
@@ -5908,23 +5935,25 @@ int main() {
 派生类定义一个与基类虚函数中名字相同但形参列表不同的函数是合法的，但这不属于重写，而是派生类自定义的函数。
 
 ```cpp
-class A
-{
-public:
-    virtual void f1()
-    {
-        cout << "A-f1" << endl;
-    }
+class A {
+   public:
+    virtual void f1() { cout << "A-f1" << endl; }
 };
 
-class B : public A
-{
-public:
-    void f1(int i)
-    {
-        cout << "B-f1(int)" << endl;
-    }
+class B : public A {
+   public:
+    void f1(int i) { cout << "B-f1(int)" << endl; } /// ...code1
+    void f1() { cout << "B-f1()" << endl; } /// ...code2
 };
+
+B* b = new B();
+b->A::f1(); // A-f1
+// 1.若是code1，code2都存在 -> B-f1()
+// 2.若是code1存在，code2不存在，则code1相当于隐藏了基类的虚函数会报错，只能显式调用b->A::f1()，因为c++名字查找先于参数校验
+// 3.若是都不存在 -> A-f1
+b->f1();
+A *a = b;
+a->f1(); // B-f1() 若是没有void f1() { cout << "B-f1()" << endl; }，则相当于B中f1(int)隐藏了A中的f1()会输出A-f1
 ```
 
 可以使用`override	`来说明一个函数必须是重写：
@@ -6004,7 +6033,7 @@ A<-B<-C，C先调用B的构造函数，B同理，调用A的构造函数，A构�
     	int i;
   }
   class B : public A {
-   int j;
+    int j;
     friend void f1(B&); // 能访问B::i
     friend void f1(A&); // 不能访问A::i
   }
